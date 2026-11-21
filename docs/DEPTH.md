@@ -14,6 +14,7 @@
 | M5 缺陷簇 | 检查四邻域成员、分档和原行 | `GET /api/runs/{run_id}/clusters/{wafer}` | `app/modules/clusters/components.py` | `tests/test_clusters.py` |
 | M6 良率勾稽 | 核对坐标集合、实收和交接差值 | `GET /api/runs/{run_id}/yield` | `app/modules/yield_audit/compare.py` | `tests/test_yield.py` |
 | M7 图批复盘 | 原子运行、按归档重算、核验后导出 | `POST /api/runs` `POST /api/runs/{run_id}/rerun` `GET /api/runs/{run_id}/export` | `app/modules/runs/pipeline.py` `app/modules/runs/service.py` `app/modules/runs/bundle.py` `app/store.py` | `tests/test_runs.py` |
+| M8 归档整理 | 看清可释放空间与证据独立性，一次整理并可回滚 | `GET /api/runs/storage` `POST /api/runs/compact` | `app/store.py` `app/modules/runs/service.py` | `tests/test_storage.py` |
 
 ## 陷阱登记
 
@@ -31,6 +32,7 @@
 | TRAP-17 | `probe-b.csv` 中文栏名且第二段换序 | 错对 X/Y 或分档 | 映射别名并按段绑定字段 | `app/modules/intake/reader.py` | `tests/test_intake.py::test_segment_headers_advance_reordered_contract` |
 | TRAP-18 | 空文件、空行与仅档头的构造输入 | 产生零行成功批次 | 三态分别返回错误码 | `app/modules/intake/reader.py` | `tests/test_intake.py::test_empty_header_and_blank_are_separate` |
 | TRAP-19 | `(0,1)` 多测次，2 号在 10 号之后到达 | 误选最后行或字典序最大值 | 取最大有效测次号 | `app/modules/retest/arbitrate.py` | `tests/test_retest.py::test_numeric_attempt_precedence_ignores_arrival_order` |
+| TRAP-20 | 旧批全份副本占满容量，新批无法入批；不保留原档则旧包失去凭据 | 压缩有损或只留结果、整理产生第二套归档 | 内容寻址原档 + 打包快照，运行号不变、重试幂等、失败整批回滚 | `app/store.py` `app/modules/runs/service.py` | `tests/test_storage.py` |
 
 补充反例包括经过 X 反射后重新推导缺口转角、圆形边缘等式包含、对角缺陷分簇、恢复点断开原失效带、平移阵列漏位以及同键并发只提交一次。
 
@@ -39,3 +41,4 @@
 - 有效位集合与裁决键集合相等，有效数守恒到四类最终状态。
 - 实收行按五类互斥归档，声明的逻辑数据量可独立回推。
 - 对外提供一份证据包，同一规则版本下输入相同时运行号与结果摘要一致。
+- 整理前后运行号与结果摘要不变；任一交接过的图批仅凭自身一个证据包即可离线复核，整理不改变包内原档字节。

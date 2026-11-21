@@ -9,6 +9,7 @@ const waferSelect = q('#wafer');
 const start = q('#start');
 const rerun = q('#rerun');
 const exportLink = q('#export');
+const compact = q('#compact');
 
 async function api(path, settings) {
   const response = await fetch(path, settings);
@@ -29,6 +30,7 @@ function controls() {
   start.disabled = sample.disabled;
   rerun.disabled = state.working || !state.run;
   waferSelect.disabled = state.working || !state.run;
+  if (compact) compact.disabled = state.working || !state.run;
 }
 
 function labelsFor(run, wafer, totals) {
@@ -68,7 +70,8 @@ async function display(run, selected, manifests, params = new URLSearchParams())
   view.hidden = true;
   text('#connection', '正在载入');
   const audit = await request(`${base}/yield`);
-  const context = {api: request, base, wafer, run, signal: controller.signal, audit, manifests, params};
+  const storage = stage === 'runs' ? await request('/api/runs/storage') : null;
+  const context = {api: request, base, wafer, run, signal: controller.signal, audit, manifests, params, storage};
   await (stage === 'mask' ? mapView(context) : views[stage](context));
   state.run = run;
   state.wafer = wafer;
@@ -104,7 +107,8 @@ async function perform(action) {
 start.addEventListener('click', () => perform(async () => {
   feedback('正在计算图批…');
   const result = await api('/api/runs', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({sample: sample.value})});
-  await display(result.manifest, state.wafer, await api('/api/runs'));
+  const manifests = await api('/api/runs');
+  await display(result.manifest, state.wafer, manifests);
   feedback(result.reused ? '相同输入已归档，复用原运行。' : '新图批已归档。');
 }));
 
@@ -112,6 +116,17 @@ rerun.addEventListener('click', () => perform(async () => {
   feedback('正在按原始图档复算…');
   const result = await api(`/api/runs/${state.run.run_id}/rerun`, {method: 'POST'});
   feedback(`复算一致 · ${result.manifest.result_sha256.slice(0, 12)}`);
+}));
+
+compact?.addEventListener('click', () => perform(async () => {
+  feedback('正在整理归档并核对每批证据…');
+  const result = await api('/api/runs/compact', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({})});
+  await display(state.run, state.wafer, await api('/api/runs'));
+  const freed = result.released_bytes;
+  const ready = result.storage.ready;
+  feedback(result.compacted
+    ? `已整理 ${result.compacted} 批 · 释放 ${Math.round(freed / 1024)} KiB · ${ready} 批证据可独立复核`
+    : `无需整理 · ${ready} 批证据均可独立复核`);
 }));
 
 waferSelect.addEventListener('change', () => perform(async () => {

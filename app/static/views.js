@@ -276,7 +276,44 @@ function auditView({audit, signal}) {
   draw();
 }
 
-function runs({run, manifests}) {
+const bytes = (value) => {
+  if (value == null) return '—';
+  const units = ['B', 'KiB', 'MiB', 'GiB'];
+  let size = Number(value), unit = 0;
+  while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit += 1; }
+  return `${unit === 0 ? size : size.toFixed(1)} ${units[unit]}`;
+};
+
+const formats = {'packed-v1': '整理版', json: '全份副本'};
+
+function storageView({storage}) {
+  const totals = storage.totals;
+  text('#storage-note', totals.pending_compaction
+    ? `${totals.pending_compaction} 批待整理 · 可释放 ${bytes(totals.reclaimable_bytes)}`
+    : `全部 ${totals.runs} 批已整理 · 证据均可独立复核`);
+  const pairsList = [
+    ['归档批次', number(totals.runs)],
+    ['占用磁盘', bytes(totals.disk_bytes)],
+    ['原始图档', bytes(totals.blob_raw_bytes)],
+    ['可释放', bytes(totals.reclaimable_bytes)],
+    ['可独立复核', `${totals.independent} / ${totals.runs}`],
+    ['待整理', number(totals.pending_compaction)],
+  ];
+  if (totals.budget_bytes == null) pairsList.push(['月度容量', '未设上限']);
+  else pairsList.push(['月度容量', `${bytes(totals.budget_bytes)} · 已用 ${totals.budget_usage_pct}%`]);
+  q('#storage-totals').replaceChildren(pairs(pairsList));
+  table(q('#storage-runs'), storage.runs, [
+    ['运行号', (run) => run.run_id.slice(0, 10), 'mono'],
+    ['格式', (run) => formats[run.format] ?? run.format],
+    ['占用', (run) => bytes(run.stored_bytes), 'num'],
+    ['可释放', (run) => run.reclaimable_bytes ? bytes(run.reclaimable_bytes) : '—', 'num'],
+    ['原档', (run) => `${run.embedded_files} 档`, 'num'],
+    ['证据独立', (run) => run.independent ? status('MATCH') : status('UNBALANCED')],
+    ['归档完整', (run) => run.damaged ? status('UNBALANCED') : status('MATCH')],
+  ]);
+}
+
+function runs({run, manifests, storage}) {
   text('#history-total', `${manifests.length} 批`);
   table(q('#history-rows'), manifests, [
     ['运行号', (item) => {
@@ -289,6 +326,7 @@ function runs({run, manifests}) {
   ]);
   q('#run-manifest').replaceChildren(pairs([['运行号', run.run_id], ['规则版本', run.rule_version],
     ['计算耗时', `${run.duration_ms} ms`], ['晶圆', run.wafers.join('、')], ['契约 SHA-256', run.contract_sha256], ['结果 SHA-256', run.result_sha256]]));
+  storageView({storage});
   table(q('#run-sources'), Object.entries(run.sources).map(([name, value]) => ({name, ...value})), [
     ['图档', 'name', 'mono'], ['字节', 'bytes', 'num'], ['SHA-256', 'sha256', 'mono'],
   ]);
